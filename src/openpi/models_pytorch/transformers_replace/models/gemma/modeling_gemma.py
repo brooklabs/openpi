@@ -19,7 +19,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Union, TypedDict
 
 import torch
 from torch import nn
@@ -39,7 +39,7 @@ from ...modeling_outputs import (
 from ...modeling_rope_utils import ROPE_INIT_FUNCTIONS, dynamic_rope_update
 from ...modeling_utils import ALL_ATTENTION_FUNCTIONS, PreTrainedModel
 from ...processing_utils import Unpack
-from ...utils import LossKwargs, auto_docstring, can_return_tuple, logging
+from ...utils import auto_docstring, can_return_tuple, logging
 from .configuration_gemma import GemmaConfig
 
 
@@ -104,7 +104,10 @@ class GemmaRMSNorm(nn.Module):
         return normed_inputs.to(dtype), gate.to(dtype)
 
     def extra_repr(self):
-        repr_str = f"{tuple(self.weight.shape)}, eps={self.eps}"
+        if hasattr(self, 'weight'):
+            repr_str = f"{tuple(self.weight.shape)}, eps={self.eps}"
+        else:
+            repr_str = f"{tuple(self.dense.weight.shape)}, eps={self.eps}"
         if self.dense is not None:
             repr_str += f", adaptive=True, cond_dim={self.cond_dim}"
         return repr_str
@@ -555,7 +558,7 @@ class GemmaModel(GemmaPreTrainedModel):
         )
 
 
-class KwargsForCausalLM(FlashAttentionKwargs, LossKwargs): ...
+class KwargsForCausalLM(FlashAttentionKwargs, TypedDict): ...
 
 
 @auto_docstring
