@@ -114,7 +114,7 @@ class PI0Pytorch(nn.Module):
         # Initialize gradient checkpointing flag
         self.gradient_checkpointing_enabled = False
 
-        msg = "Custom transformers impl is not correctly configured. Run `cp -r ./src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.12/site-packages/transformers/.`."
+        msg = "Custom transformers impl is not correctly configured. Run `cp -r libs/submodules/openpi/src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.12/site-packages/transformers/.`."
         try:
             from transformers.models.siglip import check
 
@@ -193,6 +193,9 @@ class PI0Pytorch(nn.Module):
         pad_masks = []
         att_masks = []
 
+        #print(f"{lang_tokens=} {lang_masks=}")
+        #print(f"{type(lang_tokens)=} {type(lang_masks)=}")
+
         # Process images
         for img, img_mask in zip(images, img_masks, strict=True):
 
@@ -223,6 +226,9 @@ class PI0Pytorch(nn.Module):
         # full attention between image and language inputs
         num_lang_embs = lang_emb.shape[1]
         att_masks += [0] * num_lang_embs
+
+        # for emb in embs:
+        #     print(f"{emb.shape=}")
 
         embs = torch.cat(embs, dim=1)
         pad_masks = torch.cat(pad_masks, dim=1)
@@ -459,9 +465,3 @@ class PI0Pytorch(nn.Module):
         suffix_out = suffix_out[:, -self.config.action_horizon :]
         suffix_out = suffix_out.to(dtype=torch.float32)
         return self.action_out_proj(suffix_out)
-
-    @classmethod
-    def from_pretrained(cls, pretrained_name_or_path: str, config, **kwargs):
-        model = cls(config)
-        safetensors.torch.load_model(model, pretrained_name_or_path, device="cuda")
-        return model

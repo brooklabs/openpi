@@ -8,7 +8,7 @@ import jax.numpy as jnp
 from typing_extensions import override
 
 from openpi.models import model as _model
-from openpi.models import pi0_config
+from openpi.models.pi0_config import Pi0Config
 import openpi.models.gemma as _gemma
 import openpi.models.siglip as _siglip
 from openpi.shared import array_typing as at
