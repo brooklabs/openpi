@@ -312,17 +312,12 @@ def restore_params(
 
     with ocp.PyTreeCheckpointer() as ckptr:
         metadata = ckptr.metadata(params_path)
-        print(metadata.keys())
-        
+
         try:
             item = {"params": metadata["params"]}
-            print(metadata["params"].keys())
-            #print(metadata["params"])
             has_params_key = True
         except KeyError:
             item = metadata #{"params": metadata}
-            print(metadata.keys())
-            #print(metadata)
             has_params_key = False
 
         params = ckptr.restore(

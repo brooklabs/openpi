@@ -114,15 +114,6 @@ class PI0Pytorch(nn.Module):
         # Initialize gradient checkpointing flag
         self.gradient_checkpointing_enabled = False
 
-        msg = "Custom transformers impl is not correctly configured. Run `cp -r libs/submodules/openpi/src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.12/site-packages/transformers/.`."
-        try:
-            from transformers.models.siglip import check
-
-            # if not check.check_whether_transformers_replace_is_installed_correctly():
-            #     raise ValueError(msg)
-        except ImportError:
-            raise ValueError(msg) from None
-
     def gradient_checkpointing_enable(self):
         """Enable gradient checkpointing for memory optimization."""
         self.gradient_checkpointing_enabled = True
@@ -192,9 +183,6 @@ class PI0Pytorch(nn.Module):
         embs = []
         pad_masks = []
         att_masks = []
-
-        #print(f"{lang_tokens=} {lang_masks=}")
-        #print(f"{type(lang_tokens)=} {type(lang_masks)=}")
 
         # Process images
         for img, img_mask in zip(images, img_masks, strict=True):
