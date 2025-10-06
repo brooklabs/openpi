@@ -9,7 +9,13 @@ import torch.nn.functional as F  # noqa: N812
 import openpi.models.gemma as _gemma
 from openpi.models_pytorch.gemma_pytorch import PaliGemmaWithExpertModel
 import openpi.models_pytorch.preprocessing_pytorch as _preprocessing
-import safetensors
+
+import os
+## Suppress torchinductor logs because they are extremely verbose
+os.environ["TORCHINDUCTOR_LOGGING"] = "FATAL"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "4"
+os.environ["ABSL_LOGGING_MIN_LOG_LEVEL"] = "4"
+os.environ["TORCH_LOGS"] = "-all"
 
 def get_safe_dtype(target_dtype, device_type):
     """Get a safe dtype for the given device type."""
