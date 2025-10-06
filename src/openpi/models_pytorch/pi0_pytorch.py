@@ -11,12 +11,6 @@ from openpi.models_pytorch.gemma_pytorch import PaliGemmaWithExpertModel
 import openpi.models_pytorch.preprocessing_pytorch as _preprocessing
 import safetensors
 
-
-class ImageNormType(Enum):
-    NONE = "none"
-    RAW = "raw"
-    NORMALIZED_01 = "01"
-
 def get_safe_dtype(target_dtype, device_type):
     """Get a safe dtype for the given device type."""
     if device_type == "cpu":
@@ -385,7 +379,7 @@ class PI0Pytorch(nn.Module):
         return F.mse_loss(u_t, v_t, reduction="none")
 
     @torch.no_grad()
-    def sample_actions(self, device, observation, noise=None, num_steps=10, norm_type=ImageNormType.NONE) -> Tensor:
+    def sample_actions(self, device, observation, noise=None, num_steps=10) -> Tensor:
         """Do a full inference forward and compute the action (batch_size x num_steps x num_motors)"""
         bsize = observation.state.shape[0]
         if noise is None:
@@ -393,11 +387,6 @@ class PI0Pytorch(nn.Module):
             noise = self.sample_noise(actions_shape, device)
 
         images, img_masks, lang_tokens, lang_masks, state = self._preprocess_observation(observation, train=False)
-        if norm_type == ImageNormType.RAW:
-            images = [(img + 1.0) / 2.0 * 255.0 for img in images]
-        elif norm_type == ImageNormType.NORMALIZED_01:
-            images = [(img + 1.0) / 2.0 for img in images]
-        #print(f"{norm_type=} {type(norm_type)=}")
 
         prefix_embs, prefix_pad_masks, prefix_att_masks = self.embed_prefix(images, img_masks, lang_tokens, lang_masks)
         prefix_att_2d_masks = make_att_2d_masks(prefix_pad_masks, prefix_att_masks)
