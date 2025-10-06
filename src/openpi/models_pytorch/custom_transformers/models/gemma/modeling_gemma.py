@@ -165,8 +165,8 @@ class GemmaRotaryEmbedding(nn.Module):
 
 def rotate_half(x):
     """Rotates half the hidden dims of the input."""
-    x1 = x[transformers., : x.shape[-1] // 2]
-    x2 = x[transformers., x.shape[-1] // 2 :]
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
     return torch.cat((-x2, x1), dim=-1)
 
 
@@ -558,7 +558,7 @@ class GemmaModel(GemmaPreTrainedModel):
         )
 
 
-class KwargsForCausalLM(FlashAttentionKwargs, TypedDict): transformers.
+class KwargsForCausalLM(FlashAttentionKwargs, TypedDict): ...
 
 
 @auto_docstring
@@ -614,9 +614,9 @@ class GemmaForCausalLM(GemmaPreTrainedModel, GenerationMixin):
     ) -> CausalLMOutputWithPast:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Labels for computing the masked language modeling loss. Indices should either be in `[0, transformers.,
+            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
             config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
-            (masked), the loss is only computed for the tokens with labels in `[0, transformers., config.vocab_size]`.
+            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.vocab_size]`.
 
         adarms_cond (`torch.Tensor` of shape `(batch_size, cond_dim)`, *optional*):
             Condition for ADARMS.
@@ -722,7 +722,7 @@ class GemmaForSequenceClassification(GemmaPreTrainedModel):
     ) -> SequenceClassifierOutputWithPast:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-            Labels for computing the sequence classification/regression loss. Indices should be in `[0, transformers.,
+            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
 
@@ -821,7 +821,7 @@ class GemmaForTokenClassification(GemmaPreTrainedModel):
     ) -> TokenClassifierOutput:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-            Labels for computing the sequence classification/regression loss. Indices should be in `[0, transformers.,
+            Labels for computing the sequence classification/regression loss. Indices should be in `[0, ...,
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
 

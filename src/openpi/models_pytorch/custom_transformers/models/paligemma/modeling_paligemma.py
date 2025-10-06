@@ -29,9 +29,9 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.modeling_utils import PreTrainedModel
 from transformers.processing_utils import Unpack
 from transformers.utils import ModelOutput, auto_docstring, can_return_tuple, is_torchdynamo_compiling, logging
-from transformers.models.auto import AutoModel
 from transformers.models.paligemma.configuration_paligemma import PaliGemmaConfig
-
+from ..siglip.modeling_siglip import SiglipVisionModel
+from ..gemma.modeling_gemma import GemmaModel
 
 logger = logging.get_logger(__name__)
 
@@ -138,11 +138,12 @@ class PaliGemmaModel(PaliGemmaPreTrainedModel):
 
     def __init__(self, config: PaliGemmaConfig):
         super().__init__(config)
-        self.vision_tower = AutoModel.from_config(config=config.vision_config)
+        self.vision_tower = SiglipVisionModel(config=config.vision_config)
+
         self.multi_modal_projector = PaliGemmaMultiModalProjector(config)
         self.vocab_size = config.text_config.vocab_size
 
-        language_model = AutoModel.from_config(config=config.text_config)
+        language_model = GemmaModel(config=config.text_config)
         self.language_model = language_model
 
         self.pad_token_id = self.config.pad_token_id if self.config.pad_token_id is not None else -1
@@ -266,9 +267,9 @@ class PaliGemmaModel(PaliGemmaPreTrainedModel):
     ) -> Union[tuple, PaligemmaModelOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Labels for computing the masked language modeling loss. Indices should either be in `[0, transformers.,
+            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
             config.text_config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
-            (masked), the loss is only computed for the tokens with labels in `[0, transformers., config.text_config.vocab_size]`.
+            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.text_config.vocab_size]`.
 
         Example:
 
@@ -370,7 +371,7 @@ class PaliGemmaModel(PaliGemmaPreTrainedModel):
         )
 
 
-class KwargsForCausalLM(FlashAttentionKwargs, TypedDict): transformers.
+class KwargsForCausalLM(FlashAttentionKwargs, TypedDict): ...
 
 
 @auto_docstring(
@@ -449,9 +450,9 @@ class PaliGemmaForConditionalGeneration(PaliGemmaPreTrainedModel, GenerationMixi
     ) -> Union[tuple, PaliGemmaCausalLMOutputWithPast]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size, sequence_length)`, *optional*):
-            Labels for computing the masked language modeling loss. Indices should either be in `[0, transformers.,
+            Labels for computing the masked language modeling loss. Indices should either be in `[0, ...,
             config.text_config.vocab_size]` or -100 (see `input_ids` docstring). Tokens with indices set to `-100` are ignored
-            (masked), the loss is only computed for the tokens with labels in `[0, transformers., config.text_config.vocab_size]`.
+            (masked), the loss is only computed for the tokens with labels in `[0, ..., config.text_config.vocab_size]`.
 
         Example:
 

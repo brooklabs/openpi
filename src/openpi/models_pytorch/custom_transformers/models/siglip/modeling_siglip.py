@@ -148,8 +148,8 @@ class SiglipVisionModelOutput(ModelOutput):
 
     image_embeds: Optional[torch.FloatTensor] = None
     last_hidden_state: Optional[torch.FloatTensor] = None
-    hidden_states: Optional[tuple[torch.FloatTensor, transformers.]] = None
-    attentions: Optional[tuple[torch.FloatTensor, transformers.]] = None
+    hidden_states: Optional[tuple[torch.FloatTensor, ...]] = None
+    attentions: Optional[tuple[torch.FloatTensor, ...]] = None
 
 
 @dataclass
@@ -167,8 +167,8 @@ class SiglipTextModelOutput(ModelOutput):
 
     text_embeds: Optional[torch.FloatTensor] = None
     last_hidden_state: Optional[torch.FloatTensor] = None
-    hidden_states: Optional[tuple[torch.FloatTensor, transformers.]] = None
-    attentions: Optional[tuple[torch.FloatTensor, transformers.]] = None
+    hidden_states: Optional[tuple[torch.FloatTensor, ...]] = None
+    attentions: Optional[tuple[torch.FloatTensor, ...]] = None
 
 
 @dataclass
@@ -940,7 +940,7 @@ class SiglipModel(SiglipPreTrainedModel):
         >>> # important: make sure to set padding="max_length" as that's how the model was trained
         >>> inputs = tokenizer(["a photo of a cat", "a photo of a dog"], padding="max_length", return_tensors="pt")
         >>> with torch.no_grad():
-        transformers.     text_features = model.get_text_features(**inputs)
+        ...     text_features = model.get_text_features(**inputs)
         ```"""
         # Use SigLIP model's config for some fields (if specified) instead of those of vision & text components.
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -990,7 +990,7 @@ class SiglipModel(SiglipPreTrainedModel):
         >>> inputs = processor(images=image, return_tensors="pt")
 
         >>> with torch.no_grad():
-        transformers.     image_features = model.get_image_features(**inputs)
+        ...     image_features = model.get_image_features(**inputs)
         ```"""
         # Use SiglipModel's config for some fields (if specified) instead of those of vision & text components.
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -1045,7 +1045,7 @@ class SiglipModel(SiglipPreTrainedModel):
         >>> inputs = processor(text=texts, images=image, padding="max_length", return_tensors="pt")
 
         >>> with torch.no_grad():
-        transformers.     outputs = model(**inputs)
+        ...     outputs = model(**inputs)
 
         >>> logits_per_image = outputs.logits_per_image
         >>> probs = torch.sigmoid(logits_per_image) # these are the probabilities
@@ -1147,7 +1147,7 @@ class SiglipForImageClassification(SiglipPreTrainedModel):
     ) -> ImageClassifierOutput:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
-            Labels for computing the image classification/regression loss. Indices should be in `[0, transformers.,
+            Labels for computing the image classification/regression loss. Indices should be in `[0, ...,
             config.num_labels - 1]`. If `config.num_labels == 1` a regression loss is computed (Mean-Square loss), If
             `config.num_labels > 1` a classification loss is computed (Cross-Entropy).
 
