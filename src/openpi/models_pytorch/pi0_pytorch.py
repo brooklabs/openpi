@@ -521,16 +521,23 @@ class PI0Pytorch(nn.Module):
         time = torch.tensor(1.0, dtype=torch.float32, device=device)
         while time >= -dt / 2:
             expanded_time = time.expand(bsize)
-            v_t = self.denoise_step(
-                state,
-                prefix_pad_masks,
-                past_key_values,
-                x_t,
-                expanded_time,
-            )
+            with torch.enable_grad():
+                x_var = x_t.detach().to(dtype=torch.float32).requires_grad_()
+                v_t = self.denoise_step(
+                    state,
+                    prefix_pad_masks,
+                    past_key_values,
+                    x_var,
+                    expanded_time,
+                )
+                dv_dxt = torch.autograd.grad(
+                    v_t.sum(), x_var, retain_graph=True, create_graph=True
+                )[0]
+            v_t = v_t.detach()
+            dv_dxt = dv_dxt.to(dtype=x_t.dtype)
 
             error = (prefix - v_t) * W[None, :, None] # apply soft mask along time dimension
-            g = error * torch.autograd.grad(v_t.sum(), state, create_graph=True)[0] # compute vector-jacobian product (eq. 10)
+            g = error * dv_dxt # compute vector-jacobian product (eq. 10)
 
             # Euler step - use new tensor assignment instead of in-place operation
             x_t = x_t + dt * (v_t + self.clipped_guidance_weight(expanded_time, beta) * g)
