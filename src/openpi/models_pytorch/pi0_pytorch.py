@@ -492,7 +492,7 @@ class PI0Pytorch(nn.Module):
 
         # Right-pad prefix to the action horizon
         if prefix.shape[1] < self.config.action_horizon:
-            prefix = torch.cat([prefix, torch.ones((bsize, self.config.action_horizon - prefix.shape[1], self.config.action_dim), device=device)], dim=1)
+            prefix = torch.cat([prefix, torch.zeros((bsize, self.config.action_horizon - prefix.shape[1], self.config.action_dim), device=device)], dim=1)
 
         W = self.compute_soft_mask(device, d, s)
 
@@ -530,17 +530,24 @@ class PI0Pytorch(nn.Module):
                     x_var,
                     expanded_time,
                 )
-                dv_dxt = torch.autograd.grad(
-                    v_t.sum(), x_var, retain_graph=True, create_graph=True
+
+                A1_hat = x_var - expanded_time * v_t # subtract full time because d_t is negative
+                dA1_At = torch.autograd.grad(
+                    A1_hat.sum(), x_var, retain_graph=True, create_graph=True
                 )[0]
             v_t = v_t.detach()
-            dv_dxt = dv_dxt.to(dtype=x_t.dtype)
+            A1_hat = A1_hat.detach()
+            dA1_At = dA1_At.to(dtype=x_t.dtype)
 
-            error = (prefix - v_t) * W[None, :, None] # apply soft mask along time dimension
-            g = error * dv_dxt # compute vector-jacobian product (eq. 10)
+
+            error = (prefix - A1_hat) * W[None, :, None] # apply soft mask along time dimension
+            g = error * dA1_At # compute vector-jacobian product (eq. 10)
 
             # Euler step - use new tensor assignment instead of in-place operation
-            x_t = x_t + dt * (v_t + self.clipped_guidance_weight(expanded_time, beta) * g)
+            # note that we use (1 - expanded_time) because the rtc paper's notation uses
+            # t0 = noise and t1 = action, but this code uses t0 = action and t1 = noise
+            # TODO: should we add or subtract the correction term? 
+            x_t = x_t + dt * (v_t + self.clipped_guidance_weight((1 - expanded_time), beta) * g)
             time += dt
         return x_t
 
