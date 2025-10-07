@@ -493,7 +493,7 @@ class PI0Pytorch(nn.Module):
         # Right-pad prefix to the action horizon
         if prefix.shape[1] < self.config.action_horizon:
             prefix = torch.cat([prefix, torch.ones((bsize, self.config.action_horizon - prefix.shape[1], self.config.action_dim), device=device)], dim=1)
-   
+
         W = self.compute_soft_mask(device, d, s)
 
         images, img_masks, lang_tokens, lang_masks, state = self._preprocess_observation(observation, train=False)
