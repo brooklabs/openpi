@@ -539,7 +539,7 @@ class PI0Pytorch(nn.Module):
             A1_hat = A1_hat.detach()
             dA1_At = dA1_At.to(dtype=x_t.dtype)
 
-
+            # TODO: should we use the negative weight here too
             error = (prefix - A1_hat) * W[None, :, None] # apply soft mask along time dimension
             g = error * dA1_At # compute vector-jacobian product (eq. 10)
 
