@@ -547,7 +547,7 @@ class PI0Pytorch(nn.Module):
             # note that we use (1 - expanded_time) because the rtc paper's notation uses
             # t0 = noise and t1 = action, but this code uses t0 = action and t1 = noise
             # TODO: should we add or subtract the correction term? 
-            x_t = x_t + dt * (v_t - self.clipped_guidance_weight((1 - expanded_time), beta) * g)
+            x_t = x_t + dt * (v_t + self.clipped_guidance_weight((1 - expanded_time), beta) * g)
             time += dt
         return x_t
 
