@@ -5,6 +5,7 @@ import torch
 from torch import Tensor
 from torch import nn
 import torch.nn.functional as F  # noqa: N812
+from functorch import jacrev
 
 import openpi.models.gemma as _gemma
 from openpi.models_pytorch.gemma_pytorch import PaliGemmaWithExpertModel
@@ -521,33 +522,51 @@ class PI0Pytorch(nn.Module):
         time = torch.tensor(1.0, dtype=torch.float32, device=device)
         while time >= -dt / 2:
             expanded_time = time.expand(bsize)
-            with torch.enable_grad():
-                x_var = x_t.detach().to(dtype=torch.float32).requires_grad_()
-                v_t = self.denoise_step(
-                    state,
-                    prefix_pad_masks,
-                    past_key_values,
-                    x_var,
-                    expanded_time,
-                )
+            v_t = self.denoise_step(
+                state,
+                prefix_pad_masks,
+                past_key_values,
+                x_t,
+                expanded_time,
+            )
 
-                A1_hat = x_var - expanded_time * v_t # subtract full time because d_t is negative
-                dA1_At = torch.autograd.grad(
-                    A1_hat.sum(), x_var, retain_graph=True, create_graph=True
-                )[0]
+            def compute_a1_hat(x_t):
+                #x_var = x_t.detach().to(dtype=torch.float32).requires_grad_()
+                with torch.enable_grad():
+                    v = self.denoise_step(
+                        state,
+                        prefix_pad_masks,
+                        past_key_values,
+                        x_t,
+                        expanded_time,
+                    )
+                    A1_hat = x_t - expanded_time * v # subtract full time because d_t is negative
+                    return A1_hat
+            dA1_At = jacrev(compute_a1_hat)(x_t)
+
+            print(dA1_At)
+            # dA1_At = dA1_At.reshape(b, h, d)
+
+            # dA1_At = torch.autograd.grad(
+            #     #A1_hat.sum(), x_var, retain_graph=True, create_graph=True
+            #     A1_hat, x_var, retain_graph=True, create_graph=True
+            # )[0]
+            # dA1_At = jacobian_func(outputs=A1_hat, inputs=x_var) # WHAT GOES HERE?
             v_t = v_t.detach()
-            A1_hat = A1_hat.detach()
-            dA1_At = dA1_At.to(dtype=x_t.dtype)
+            A1_hat = x_t - expanded_time * v_t
+            #dA1_At = dA1_At.to(dtype=x_t.dtype).reshape(b, h, d)
 
             # TODO: should we use the negative weight here too
             error = (prefix - A1_hat) * W[None, :, None] # apply soft mask along time dimension
-            g = error * dA1_At # compute vector-jacobian product (eq. 10)
+            g = error.reshape(-1) @ dA1_At # compute vector-jacobian product (eq. 10)
+
+            g = g.reshape(bsize, self.config.action_horizon, self.config.action_dim)
 
             # Euler step - use new tensor assignment instead of in-place operation
             # note that we use (1 - expanded_time) because the rtc paper's notation uses
             # t0 = noise and t1 = action, but this code uses t0 = action and t1 = noise
             # TODO: should we add or subtract the correction term? 
-            x_t = x_t + dt * (v_t + self.clipped_guidance_weight((1 - expanded_time), beta) * g)
+            x_t = x_t + dt * (v_t - self.clipped_guidance_weight((1 - expanded_time), beta) * g)
             time += dt
         return x_t
 
