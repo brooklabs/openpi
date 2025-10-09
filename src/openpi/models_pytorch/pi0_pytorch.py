@@ -484,7 +484,7 @@ class PI0Pytorch(nn.Module):
 
 
     @torch.no_grad()
-    def sample_actions_with_prefix(self, device, observation, prefix, d: int, s: int, beta: float = 5.0, noise=None, num_steps=10) -> Tensor:
+    def sample_actions_with_prefix_jacobian(self, device, observation, prefix, d: int, s: int, beta: float = 5.0, noise=None, num_steps=10) -> Tensor:
         """Do a full inference forward and compute the action (batch_size x num_steps x num_motors)"""
         bsize = observation.state.shape[0]
         if noise is None:
@@ -567,6 +567,69 @@ class PI0Pytorch(nn.Module):
             # t0 = noise and t1 = action, but this code uses t0 = action and t1 = noise
             # TODO: should we add or subtract the correction term? 
             x_t = x_t + dt * (v_t - self.clipped_guidance_weight((1 - expanded_time), beta) * g)
+            time += dt
+        return x_t
+    
+    @torch.no_grad()
+    def sample_actions_with_prefix_linear(self, device, observation, prefix, d: int, s: int, beta: float = 5.0, noise=None, num_steps=10) -> Tensor:
+        """Do a full inference forward and compute the action (batch_size x num_steps x num_motors)"""
+        bsize = observation.state.shape[0]
+        if noise is None:
+            actions_shape = (bsize, self.config.action_horizon, self.config.action_dim)
+            noise = self.sample_noise(actions_shape, device)
+
+        # Right-pad prefix to the action horizon
+        if prefix.shape[1] < self.config.action_horizon:
+            prefix = torch.cat([prefix, torch.zeros((bsize, self.config.action_horizon - prefix.shape[1], self.config.action_dim), device=device)], dim=1)
+
+        W = self.compute_soft_mask(device, d, s)
+
+        images, img_masks, lang_tokens, lang_masks, state = self._preprocess_observation(observation, train=False)
+
+        prefix_embs, prefix_pad_masks, prefix_att_masks = self.embed_prefix(images, img_masks, lang_tokens, lang_masks)
+        prefix_att_2d_masks = make_att_2d_masks(prefix_pad_masks, prefix_att_masks)
+        prefix_position_ids = torch.cumsum(prefix_pad_masks, dim=1) - 1
+
+        # Compute image and language key value cache
+        prefix_att_2d_masks_4d = self._prepare_attention_masks_4d(prefix_att_2d_masks)
+        self.paligemma_with_expert.paligemma.language_model.config._attn_implementation = "eager"  # noqa: SLF001
+
+        _, past_key_values = self.paligemma_with_expert.forward(
+            attention_mask=prefix_att_2d_masks_4d,
+            position_ids=prefix_position_ids,
+            past_key_values=None,
+            inputs_embeds=[prefix_embs, None],
+            use_cache=True,
+        )
+
+        dt = -1.0 / num_steps
+        dt = torch.tensor(dt, dtype=torch.float32, device=device)
+
+        x_t = noise
+        time = torch.tensor(1.0, dtype=torch.float32, device=device)
+        while time >= -dt / 2:
+            expanded_time = time.expand(bsize)
+            v_t = self.denoise_step(
+                state,
+                prefix_pad_masks,
+                past_key_values,
+                x_t,
+                expanded_time,
+            )
+
+            A1_hat = x_t - expanded_time * v_t
+            #dA1_At = dA1_At.to(dtype=x_t.dtype).reshape(b, h, d)
+
+            # TODO: should we use the negative weight here too
+            error = (prefix - A1_hat) * W[None, :, None] # apply soft mask along time dimension
+            g = error / (expanded_time + 1e-6) # scale by time to get units correct
+
+
+            # Euler step - use new tensor assignment instead of in-place operation
+            # note that we use (1 - expanded_time) because the rtc paper's notation uses
+            # t0 = noise and t1 = action, but this code uses t0 = action and t1 = noise
+            # TODO: should we add or subtract the correction term? 
+            x_t = x_t + dt * (v_t - min(beta, g))
             time += dt
         return x_t
 
