@@ -480,7 +480,7 @@ class PI0Pytorch(nn.Module):
         soft_mask = soft_mask * (torch.exp(soft_mask) - 1) / (math.e + 1)
         soft_mask[:d] = 1.0
         soft_mask[-s:] = 0.0
-        return soft_mask
+        return soft_mask.to(dtype=torch.float32)
 
 
     @torch.no_grad()
@@ -616,20 +616,21 @@ class PI0Pytorch(nn.Module):
                 x_t,
                 expanded_time,
             )
-
+            #print(f"{v_t.dtype=}")
             A1_hat = x_t - expanded_time * v_t
+            #print(f"{A1_hat.dtype=}")
             #dA1_At = dA1_At.to(dtype=x_t.dtype).reshape(b, h, d)
 
             # TODO: should we use the negative weight here too
             error = (prefix - A1_hat) * W[None, :, None] # apply soft mask along time dimension
-            g = error / (expanded_time + 1e-6) # scale by time to get units correct
-
+            g = error / (expanded_time + 1e-6) # scale by time to get units correct # CORRECT IS 1/t not 1-t
+            #print(f"{g.dtype=}")
 
             # Euler step - use new tensor assignment instead of in-place operation
             # note that we use (1 - expanded_time) because the rtc paper's notation uses
             # t0 = noise and t1 = action, but this code uses t0 = action and t1 = noise
             # TODO: should we add or subtract the correction term? 
-            x_t = x_t + dt * (v_t - min(beta, g))
+            x_t = x_t + dt * (v_t - torch.clamp(g, min=-beta, max=beta))
             time += dt
         return x_t
 
