@@ -17,6 +17,8 @@ os.environ["TORCHINDUCTOR_LOGGING"] = "FATAL"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "4"
 os.environ["ABSL_LOGGING_MIN_LOG_LEVEL"] = "4"
 os.environ["TORCH_LOGS"] = "-all"
+compile_sampler = os.getenv("COMPILE_OPENPI", "true").lower() == "true"
+compile_rtc = os.getenv("COMPILE_OPENPI_RTC", "false").lower() == "true"
 
 def get_safe_dtype(target_dtype, device_type):
     """Get a safe dtype for the given device type."""
@@ -116,7 +118,11 @@ class PI0Pytorch(nn.Module):
             self.action_time_mlp_out = nn.Linear(action_expert_config.width, action_expert_config.width)
 
         torch.set_float32_matmul_precision("high")
-        self.sample_actions = torch.compile(self.sample_actions, mode="max-autotune")
+        if compile_sampler:
+            self.sample_actions = torch.compile(self.sample_actions, mode="max-autotune")
+            #self.sample_actions_with_prefix_jacobian = torch.compile(self.sample_actions_with_prefix_jacobian, mode="max-autotune")
+        if compile_rtc:
+            self.sample_actions_with_prefix_linear = torch.compile(self.sample_actions_with_prefix_linear, mode="max-autotune")
 
         # Initialize gradient checkpointing flag
         self.gradient_checkpointing_enabled = False
@@ -469,22 +475,9 @@ class PI0Pytorch(nn.Module):
         r_tau_sq = ((1 - t) ** 2) / (t ** 2 + (1 - t) ** 2)
         return min(beta, (1 - t) / (t * r_tau_sq))
 
-    def compute_soft_mask(self, device, d: int, s: int):
-        """
-        Compute the mask w for the prefix s.t. guidance weight is 1 for frozen actions 0:d
-        and slowly ramps to 0 for d:H-s, then 0 for H-s:H
-
-        See eq. (5) in the RTC paper, https://arxiv.org/pdf/2506.07339
-        """
-        soft_mask = (self.config.action_horizon - s - torch.arange(self.config.action_horizon, device=device)) / (self.config.action_horizon - s - d + 1)
-        soft_mask = soft_mask * (torch.exp(soft_mask) - 1) / (math.e + 1)
-        soft_mask[:d] = 1.0
-        soft_mask[-s:] = 0.0
-        return soft_mask.to(dtype=torch.float32)
-
 
     @torch.no_grad()
-    def sample_actions_with_prefix_jacobian(self, device, observation, prefix, d: int, s: int, beta: float = 5.0, noise=None, num_steps=10) -> Tensor:
+    def sample_actions_with_prefix_jacobian(self, device, observation, prefix, soft_mask, beta: float = 5.0, noise=None, num_steps=10) -> Tensor:
         """Do a full inference forward and compute the action (batch_size x num_steps x num_motors)"""
         bsize = observation.state.shape[0]
         if noise is None:
@@ -494,8 +487,6 @@ class PI0Pytorch(nn.Module):
         # Right-pad prefix to the action horizon
         if prefix.shape[1] < self.config.action_horizon:
             prefix = torch.cat([prefix, torch.zeros((bsize, self.config.action_horizon - prefix.shape[1], self.config.action_dim), device=device)], dim=1)
-
-        W = self.compute_soft_mask(device, d, s)
 
         images, img_masks, lang_tokens, lang_masks, state = self._preprocess_observation(observation, train=False)
 
@@ -557,7 +548,7 @@ class PI0Pytorch(nn.Module):
             #dA1_At = dA1_At.to(dtype=x_t.dtype).reshape(b, h, d)
 
             # TODO: should we use the negative weight here too
-            error = (prefix - A1_hat) * W[None, :, None] # apply soft mask along time dimension
+            error = (prefix - A1_hat) * soft_mask[None, :, None] # apply soft mask along time dimension
             g = error.reshape(-1) @ dA1_At # compute vector-jacobian product (eq. 10)
 
             g = g.reshape(bsize, self.config.action_horizon, self.config.action_dim)
@@ -571,7 +562,7 @@ class PI0Pytorch(nn.Module):
         return x_t
     
     @torch.no_grad()
-    def sample_actions_with_prefix_linear(self, device, observation, prefix, d: int, s: int, beta: float = 5.0, noise=None, num_steps=10) -> Tensor:
+    def sample_actions_with_prefix_linear(self, device, observation, prefix, soft_mask, beta: float = 5.0, noise=None, num_steps=10) -> Tensor:
         """Do a full inference forward and compute the action (batch_size x num_steps x num_motors)"""
         bsize = observation.state.shape[0]
         if noise is None:
@@ -580,9 +571,8 @@ class PI0Pytorch(nn.Module):
 
         # Right-pad prefix to the action horizon
         if prefix.shape[1] < self.config.action_horizon:
-            prefix = torch.cat([prefix, torch.zeros((bsize, self.config.action_horizon - prefix.shape[1], self.config.action_dim), device=device)], dim=1)
-
-        W = self.compute_soft_mask(device, d, s)
+            # TODO: Should we right-pad with ones or zeros?
+            prefix = torch.cat([prefix, torch.ones((bsize, self.config.action_horizon - prefix.shape[1], self.config.action_dim), device=device)], dim=1)
 
         images, img_masks, lang_tokens, lang_masks, state = self._preprocess_observation(observation, train=False)
 
@@ -622,14 +612,17 @@ class PI0Pytorch(nn.Module):
             #dA1_At = dA1_At.to(dtype=x_t.dtype).reshape(b, h, d)
 
             # TODO: should we use the negative weight here too
-            error = (prefix - A1_hat) * W[None, :, None] # apply soft mask along time dimension
+            error = (prefix - A1_hat) * soft_mask[None, :, None] # apply soft mask along time dimension
             g = error / (expanded_time + 1e-6) # scale by time to get units correct # CORRECT IS 1/t not 1-t
-            #print(f"{g.dtype=}")
+            g_mag = torch.norm(g)
+            v_mag = torch.norm(v_t)
+            #print(f"{g_mag=} {v_mag=}")
 
             # Euler step - use new tensor assignment instead of in-place operation
             # note that we use (1 - expanded_time) because the rtc paper's notation uses
             # t0 = noise and t1 = action, but this code uses t0 = action and t1 = noise
             # TODO: should we add or subtract the correction term? 
+            #x_t = x_t + dt * (v_t - self.clipped_guidance_weight((expanded_time), beta) * g)
             x_t = x_t + dt * (v_t - torch.clamp(g, min=-beta, max=beta))
             time += dt
         return x_t
