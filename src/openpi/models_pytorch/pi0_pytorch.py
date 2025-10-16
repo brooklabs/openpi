@@ -17,8 +17,9 @@ os.environ["TORCHINDUCTOR_LOGGING"] = "FATAL"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "4"
 os.environ["ABSL_LOGGING_MIN_LOG_LEVEL"] = "4"
 os.environ["TORCH_LOGS"] = "-all"
-compile_sampler = os.getenv("COMPILE_OPENPI", "true").lower() == "true"
+compile_sampler = os.getenv("COMPILE_OPENPI_INFERENCE", "true").lower() == "true"
 compile_rtc = os.getenv("COMPILE_OPENPI_RTC", "false").lower() == "true"
+compile_model = os.getenv("COMPILE_OPENPI_MODEL", "false").lower() == "true"
 
 def get_safe_dtype(target_dtype, device_type):
     """Get a safe dtype for the given device type."""
@@ -118,14 +119,22 @@ class PI0Pytorch(nn.Module):
             self.action_time_mlp_out = nn.Linear(action_expert_config.width, action_expert_config.width)
 
         torch.set_float32_matmul_precision("high")
-        if compile_sampler:
-            self.sample_actions = torch.compile(self.sample_actions, mode="max-autotune")
-            #self.sample_actions_with_prefix_jacobian = torch.compile(self.sample_actions_with_prefix_jacobian, mode="max-autotune")
-        if compile_rtc:
-            self.sample_actions_with_prefix_linear = torch.compile(self.sample_actions_with_prefix_linear, mode="max-autotune")
-
         # Initialize gradient checkpointing flag
         self.gradient_checkpointing_enabled = False
+
+    def compile_model(self):
+        print("Compiling model underlying funcs")
+        #self.embed_prefix = torch.compile(self.embed_prefix, mode="max-autotune")
+        #self.embed_suffix = torch.compile(self.embed_suffix, mode="max-autotune")
+        self.denoise_step = torch.compile(self.denoise_step, mode="max-autotune")
+    
+    def compile_sampler(self):
+        print("Compiling sample_actions")
+        self.sample_actions = torch.compile(self.sample_actions, mode="max-autotune", fullgraph=False)
+    
+    def compile_rtc(self):
+        print("Compiling sample_actions_with_prefix_linear")
+        self.sample_actions_with_prefix_linear = torch.compile(self.sample_actions_with_prefix_linear, mode="max-autotune")
 
     def gradient_checkpointing_enable(self):
         """Enable gradient checkpointing for memory optimization."""
@@ -568,11 +577,6 @@ class PI0Pytorch(nn.Module):
         if noise is None:
             actions_shape = (bsize, self.config.action_horizon, self.config.action_dim)
             noise = self.sample_noise(actions_shape, device)
-
-        # Right-pad prefix to the action horizon
-        if prefix.shape[1] < self.config.action_horizon:
-            # TODO: Should we right-pad with ones or zeros?
-            prefix = torch.cat([prefix, torch.ones((bsize, self.config.action_horizon - prefix.shape[1], self.config.action_dim), device=device)], dim=1)
 
         images, img_masks, lang_tokens, lang_masks, state = self._preprocess_observation(observation, train=False)
 
