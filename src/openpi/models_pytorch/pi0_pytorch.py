@@ -631,3 +631,63 @@ class PI0Pytorch(nn.Module):
             time += dt
         return x_t
 
+    @torch.no_grad()
+    def sample_actions_with_prefix_pnp(self, device, observation, prefix, soft_mask, alpha=0.5, noise=None, num_steps=10) -> Tensor:
+        """
+        Plug-and-Play flow matching inpainting comprises 3 steps:
+        
+        1. Gradient step on the data fidelity term
+            z_t = x_t - gamma_t gradF(x_t)
+        2. Linear interpolation between the current sample and noise
+        3. PnP step: a linear approximation of the full flow
+        """
+        bsize = observation.state.shape[0]
+        if noise is None:
+            actions_shape = (bsize, self.config.action_horizon, self.config.action_dim)
+            noise = self.sample_noise(actions_shape, device)
+
+        images, img_masks, lang_tokens, lang_masks, state = self._preprocess_observation(observation, train=False)
+
+        prefix_embs, prefix_pad_masks, prefix_att_masks = self.embed_prefix(images, img_masks, lang_tokens, lang_masks)
+        prefix_att_2d_masks = make_att_2d_masks(prefix_pad_masks, prefix_att_masks)
+        prefix_position_ids = torch.cumsum(prefix_pad_masks, dim=1) - 1
+
+        # Compute image and language key value cache
+        prefix_att_2d_masks_4d = self._prepare_attention_masks_4d(prefix_att_2d_masks)
+        self.paligemma_with_expert.paligemma.language_model.config._attn_implementation = "eager"  # noqa: SLF001
+
+        _, past_key_values = self.paligemma_with_expert.forward(
+            attention_mask=prefix_att_2d_masks_4d,
+            position_ids=prefix_position_ids,
+            past_key_values=None,
+            inputs_embeds=[prefix_embs, None],
+            use_cache=True,
+        )
+
+        dt = -1.0 / num_steps
+        dt = torch.tensor(dt, dtype=torch.float32, device=device)
+
+        x_t = noise
+        time = torch.tensor(1.0, dtype=torch.float32, device=device)
+        while time >= -dt / 2:
+            expanded_time = time.expand(bsize)
+            # data fidelity step, with soft masking
+            gamma_t = time ** alpha
+            z_t = x_t - gamma_t * (x_t - prefix) * soft_mask[None, :, None]
+
+            # linear interpolation between the current sample and noise
+            z_interp = (1 - expanded_time) * z_t + expanded_time * self.sample_noise(z_t.shape, device)
+
+            # PnP denoising step
+            v_t = self.denoise_step(
+                state,
+                prefix_pad_masks,
+                past_key_values,
+                x_t,
+                expanded_time,
+            )
+
+            x_t = z_interp - expanded_time * v_t
+            time += dt
+        return x_t
+
