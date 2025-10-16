@@ -668,6 +668,7 @@ class PI0Pytorch(nn.Module):
         dt = torch.tensor(dt, dtype=torch.float32, device=device)
 
         x_t = noise
+        eps = self.sample_noise(x_t.shape, device)
         time = torch.tensor(1.0, dtype=torch.float32, device=device)
         while time >= -dt / 2:
             expanded_time = time.expand(bsize)
@@ -676,7 +677,7 @@ class PI0Pytorch(nn.Module):
             z_t = x_t - gamma_t * (x_t - prefix) * soft_mask[None, :, None]
 
             # linear interpolation between the current sample and noise
-            z_interp = (1 - expanded_time) * z_t + expanded_time * self.sample_noise(z_t.shape, device)
+            z_interp = (1 - expanded_time) * z_t + expanded_time * eps
 
             # PnP denoising step
             v_t = self.denoise_step(
