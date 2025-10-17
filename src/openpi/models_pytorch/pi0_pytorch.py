@@ -668,26 +668,27 @@ class PI0Pytorch(nn.Module):
         dt = torch.tensor(dt, dtype=torch.float32, device=device)
 
         x_t = noise
-        eps = self.sample_noise(x_t.shape, device)
         time = torch.tensor(1.0, dtype=torch.float32, device=device)
         while time >= -dt / 2:
             expanded_time = time.expand(bsize)
             # data fidelity step, with soft masking
             gamma_t = time ** alpha
-            z_t = x_t - gamma_t * (x_t - prefix) * soft_mask[None, :, None]
+            z_t = x_t - gamma_t * (x_t - prefix) * soft_mask[None, :, None] # todo: should we flip signs of every x_t operation
 
             # linear interpolation between the current sample and noise
-            z_interp = (1 - expanded_time) * z_t + expanded_time * eps
+            z_interp = (1 - expanded_time) * z_t + expanded_time * self.sample_noise(z_t.shape, device)
 
             # PnP denoising step
             v_t = self.denoise_step(
                 state,
                 prefix_pad_masks,
                 past_key_values,
-                x_t,
+                z_interp,
                 expanded_time,
             )
-
+            # Euler dt
+            # x_t = z_interp + dt * v_t
+            # ACTUAL Dt 
             x_t = z_interp - expanded_time * v_t
             time += dt
         return x_t
