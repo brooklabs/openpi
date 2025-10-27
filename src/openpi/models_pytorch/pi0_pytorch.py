@@ -672,7 +672,7 @@ class PI0Pytorch(nn.Module):
         while time >= -dt / 2:
             expanded_time = time.expand(bsize)
             # data fidelity step, with soft masking
-            gamma_t = time ** alpha
+            gamma_t = time ** alpha #self.clipped_guidance_weight((expanded_time), alpha) #
             z_t = x_t - gamma_t * (x_t - prefix) * soft_mask[None, :, None] # todo: should we flip signs of every x_t operation
 
             # linear interpolation between the current sample and noise
