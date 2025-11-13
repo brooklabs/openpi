@@ -15,6 +15,7 @@ class PaliGemmaWithExpertModel(nn.Module):
         action_expert_config,
         use_adarms=None,
         precision: Literal["bfloat16", "float32"] = "bfloat16",
+        raw_paligemma: bool = False,
     ):
         if use_adarms is None:
             use_adarms = [False, False]
@@ -53,7 +54,14 @@ class PaliGemmaWithExpertModel(nn.Module):
             adarms_cond_dim=action_expert_config.width if use_adarms[1] else None,
         )
 
-        self.paligemma = PaliGemmaForConditionalGeneration(config=vlm_config_hf)
+        if raw_paligemma:            
+            print("Loading raw PaliGemma model...")
+            self.paligemma = \
+                PaliGemmaForConditionalGeneration.from_pretrained(
+                    "google/paligemma-3b-pt-224", device_map=None
+                    )
+        else:
+            self.paligemma = PaliGemmaForConditionalGeneration(config=vlm_config_hf)
         self.gemma_expert = GemmaForCausalLM(config=action_expert_config_hf)
         self.gemma_expert.model.embed_tokens = None
 

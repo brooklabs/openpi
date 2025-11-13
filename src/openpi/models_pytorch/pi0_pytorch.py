@@ -101,6 +101,7 @@ class PI0Pytorch(nn.Module):
             action_expert_config,
             use_adarms=[False, True] if self.pi05 else [False, False],
             precision=config.dtype,
+            raw_paligemma=config.paligemma_variant == "gemma_2b_raw",
         )
 
         self.action_in_proj = nn.Linear(32, action_expert_config.width)
