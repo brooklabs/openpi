@@ -156,9 +156,9 @@ class PI0Pytorch(nn.Module):
         att_2d_masks_4d = att_2d_masks[:, None, :, :]
         return torch.where(att_2d_masks_4d, 0.0, -2.3819763e38)
 
-    def _preprocess_observation(self, observation, *, train=True):
+    def _preprocess_observation(self, observation, *, train=True, use_geometric_augmentations=False):
         """Helper method to preprocess observation."""
-        observation = _preprocessing.preprocess_observation_pytorch(observation, train=train)
+        observation = _preprocessing.preprocess_observation_pytorch(observation, train=train, use_geometric_augmentations=use_geometric_augmentations)
         return (
             list(observation.images.values()),
             list(observation.image_masks.values()),
@@ -314,9 +314,9 @@ class PI0Pytorch(nn.Module):
 
         return embs, pad_masks, att_masks, adarms_cond
 
-    def forward(self, observation, actions, noise=None, time=None) -> Tensor:
+    def forward(self, observation, actions, noise=None, time=None, use_geometric_augmentations=False) -> Tensor:
         """Do a full training forward pass and compute the loss (batch_size x num_steps x num_motors)"""
-        images, img_masks, lang_tokens, lang_masks, state = self._preprocess_observation(observation, train=True)
+        images, img_masks, lang_tokens, lang_masks, state = self._preprocess_observation(observation, train=True, use_geometric_augmentations=use_geometric_augmentations)
 
         if noise is None:
             noise = self.sample_noise(actions.shape, actions.device)
