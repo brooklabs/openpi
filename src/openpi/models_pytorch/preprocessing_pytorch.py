@@ -23,7 +23,7 @@ def preprocess_observation_pytorch(
     train: bool = False,
     image_keys: Sequence[str] = IMAGE_KEYS,
     image_resolution: tuple[int, int] = IMAGE_RESOLUTION,
-    geometric_augmentations: bool = False,
+    use_geometric_augmentations: bool = False,
 ):
     """Torch.compile-compatible version of preprocess_observation_pytorch with simplified type annotations.
 
@@ -55,7 +55,7 @@ def preprocess_observation_pytorch(
             image = image / 2.0 + 0.5
 
             # Apply PyTorch-based augmentations
-            if "wrist" not in key and geometric_augmentations:
+            if "wrist" not in key and use_geometric_augmentations:
                 # Geometric augmentations for non-wrist cameras
                 height, width = image.shape[1:3]
 
