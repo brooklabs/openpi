@@ -349,47 +349,36 @@ class PI0Pytorch(nn.Module):
         # Prepare attention masks
         att_2d_masks_4d = self._prepare_attention_masks_4d(att_2d_masks)
 
-        # Apply gradient checkpointing if enabled
-        if self.return_embeddings:
-            paligemma_embeds = self.paligemma_with_expert.forward(
+    
+        def forward_func(prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond):
+            (_, suffix_out), _ = self.paligemma_with_expert.forward(
                 attention_mask=att_2d_masks_4d,
                 position_ids=position_ids,
                 past_key_values=None,
-                inputs_embeds=[prefix_embs, None],
+                inputs_embeds=[prefix_embs, suffix_embs],
                 use_cache=False,
                 adarms_cond=[None, adarms_cond],
             )
-            return paligemma_embeds
-        else:
-            def forward_func(prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond):
-                (_, suffix_out), _ = self.paligemma_with_expert.forward(
-                    attention_mask=att_2d_masks_4d,
-                    position_ids=position_ids,
-                    past_key_values=None,
-                    inputs_embeds=[prefix_embs, suffix_embs],
-                    use_cache=False,
-                    adarms_cond=[None, adarms_cond],
-                )
-                return suffix_out
+            return suffix_out
 
-            suffix_out = self._apply_checkpoint(
-                forward_func, prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond
-            )
-            if self.return_embeddings:
-                return suffix_out.to(dtype=torch.float32)
-            suffix_out = suffix_out[:, -self.config.action_horizon :]
-            suffix_out = suffix_out.to(dtype=torch.float32)
+        suffix_out = self._apply_checkpoint(
+            forward_func, prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond
+        )
+        if self.return_embeddings:
+            return suffix_out.to(dtype=torch.float32)
+        suffix_out = suffix_out[:, -self.config.action_horizon :]
+        suffix_out = suffix_out.to(dtype=torch.float32)
 
-            # Apply gradient checkpointing to final action projection if enabled
-            def action_out_proj_func(suffix_out):
-                return self.action_out_proj(suffix_out)
+        # Apply gradient checkpointing to final action projection if enabled
+        def action_out_proj_func(suffix_out):
+            return self.action_out_proj(suffix_out)
 
-            v_t = self._apply_checkpoint(action_out_proj_func, suffix_out)
-            return F.mse_loss(u_t, v_t, reduction="none")
+        v_t = self._apply_checkpoint(action_out_proj_func, suffix_out)
+        return F.mse_loss(u_t, v_t, reduction="none")
     
-    def get_paligemma_embeddings(self, observation, use_geometric_augmentations=False) -> Tensor:
+    def get_paligemma_embeddings(self, observation, use_geometric_augmentations=False, train=True) -> Tensor:
         """Get the PaliGemma embeddings for a given observation"""
-        images, img_masks, lang_tokens, lang_masks, _ = self._preprocess_observation(observation, train=True, use_geometric_augmentations=use_geometric_augmentations)
+        images, img_masks, lang_tokens, lang_masks, _ = self._preprocess_observation(observation, train=train, use_geometric_augmentations=use_geometric_augmentations)
 
         prefix_embs, prefix_pad_masks, prefix_att_masks = self.embed_prefix(images, img_masks, lang_tokens, lang_masks)
         if (
