@@ -379,7 +379,6 @@ class PI0Pytorch(nn.Module):
     def get_paligemma_embeddings(self, observation, use_geometric_augmentations=False, train=True) -> Tensor:
         """Get the PaliGemma embeddings for a given observation"""
         images, img_masks, lang_tokens, lang_masks, _ = self._preprocess_observation(observation, train=train, use_geometric_augmentations=use_geometric_augmentations)
-
         prefix_embs, prefix_pad_masks, prefix_att_masks = self.embed_prefix(images, img_masks, lang_tokens, lang_masks)
         if (
             self.paligemma_with_expert.paligemma.language_model.layers[0].self_attn.q_proj.weight.dtype
