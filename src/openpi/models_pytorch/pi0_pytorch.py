@@ -92,7 +92,6 @@ class PI0Pytorch(nn.Module):
         super().__init__()
         self.config = config
         self.pi05 = config.pi05
-        self.return_embeddings = getattr(config, "return_embeddings", False)
 
         paligemma_config = _gemma.get_config(config.paligemma_variant)
         action_expert_config = _gemma.get_config(config.action_expert_variant)
@@ -364,8 +363,7 @@ class PI0Pytorch(nn.Module):
         suffix_out = self._apply_checkpoint(
             forward_func, prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond
         )
-        if self.return_embeddings:
-            return suffix_out.to(dtype=torch.float32)
+
         suffix_out = suffix_out[:, -self.config.action_horizon :]
         suffix_out = suffix_out.to(dtype=torch.float32)
 
@@ -374,7 +372,8 @@ class PI0Pytorch(nn.Module):
             return self.action_out_proj(suffix_out)
 
         v_t = self._apply_checkpoint(action_out_proj_func, suffix_out)
-        return F.mse_loss(u_t, v_t, reduction="none")
+        loss =  F.mse_loss(u_t, v_t, reduction="none")
+        return loss
     
     def get_paligemma_embeddings(self, observation, use_geometric_augmentations=False, train=True) -> Tensor:
         """Get the PaliGemma embeddings for a given observation"""
